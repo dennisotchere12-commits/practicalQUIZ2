@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Garden Courtyard — Three.js Scene</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #87CEEB; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+    canvas { display: block; }
+    #info {
+      position: absolute;
+      top: 16px; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.45);
+      color: #fff;
+      padding: 8px 20px;
+      border-radius: 20px;
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      pointer-events: none;
+      backdrop-filter: blur(6px);
+    }
+  </style>
+</head>
+<body>
+<div id="info">🌿 Garden Courtyard &nbsp;|&nbsp; Drag to Orbit &nbsp;·&nbsp; Scroll to Zoom</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ============================================================
+   GLOBALS
+   ============================================================ */
+let renderer, scene, camera, controls;
+
+/* ============================================================
+   MATERIAL LIBRARY — define once, reuse everywhere
+   ============================================================ */
+const MAT = {
+  wood:       new THREE.MeshStandardMaterial({ color: 0x8B5E3C, roughness: 0.85, metalness: 0.05 }),
+  woodDark:   new THREE.MeshStandardMaterial({ color: 0x5C3317, roughness: 0.9,  metalness: 0.0  }),
+  grass:      new THREE.MeshStandardMaterial({ color: 0x4CAF50, roughness: 1.0,  metalness: 0.0  }),
+  path:       new THREE.MeshStandardMaterial({ color: 0xC8A96E, roughness: 0.95, metalness: 0.0  }),
+  miloGreen:  new THREE.MeshStandardMaterial({ color: 0x2E7D32, roughness: 0.5,  metalness: 0.15 }),
+  milkWhite:  new THREE.MeshStandardMaterial({ color: 0xEEEEEE, roughness: 0.4,  metalness: 0.1  }),
+  lidMetal:   new THREE.MeshStandardMaterial({ color: 0xB0BEC5, roughness: 0.3,  metalness: 0.8  }),
+  cupCream:   new THREE.MeshStandardMaterial({ color: 0xFFF8E1, roughness: 0.6,  metalness: 0.0  }),
+  cupBlue:    new THREE.MeshStandardMaterial({ color: 0x5C9BD6, roughness: 0.5,  metalness: 0.05 }),
+  trunkBark:  new THREE.MeshStandardMaterial({ color: 0x6D4C41, roughness: 0.95, metalness: 0.0  }),
+  leaves:     new THREE.MeshStandardMaterial({ color: 0x388E3C, roughness: 0.9,  metalness: 0.0  }),
+  stone:      new THREE.MeshStandardMaterial({ color: 0x9E9E9E, roughness: 0.9,  metalness: 0.0  }),
+  fence:      new THREE.MeshStandardMaterial({ color: 0xD7CCC8, roughness: 0.8,  metalness: 0.0  }),
+  miloLabel:  new THREE.MeshStandardMaterial({ color: 0xFFD54F, roughness: 0.6,  metalness: 0.0  }),
+  milkLabel:  new THREE.MeshStandardMaterial({ color: 0x1565C0, roughness: 0.6,  metalness: 0.0  }),
+};
+
+/* ============================================================
+   INIT SCENE — renderer, scene, camera, fog
+   ============================================================ */
+function initScene() {
+  // Renderer
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+  document.body.appendChild(renderer.domElement);
+
+  // Scene
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x87CEEB);
+  scene.fog = new THREE.Fog(0x87CEEB, 35, 80);
+
+  // Camera
+  camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 200);
+  camera.position.set(10, 8, 14);
+  camera.lookAt(0, 1, 0);
+
+  window.addEventListener('resize', onResize);
+}
+
+/* ============================================================
+   SETUP CONTROLS — OrbitControls with damping
+   ============================================================ */
+function setupControls() {
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.06;
+  controls.minDistance = 4;
+  controls.maxDistance = 40;
+  controls.maxPolarAngle = Math.PI / 2 - 0.04;
+  controls.target.set(0, 1, 0);
+  controls.update();
+}
+
+/* ============================================================
+   SETUP LIGHTING — 3-point system + hemisphere
+   ============================================================ */
+function setupLighting() {
+  // Hemisphere (sky/ground fill)
+  const hemi = new THREE.HemisphereLight(0xB3E5FC, 0x558B2F, 0.6);
+  scene.add(hemi);
+
+  // Ambient
+  const ambient = new THREE.AmbientLight(0xFFFFFF, 0.35);
+  scene.add(ambient);
+
+  // Directional — sun
+  const sun = new THREE.DirectionalLight(0xFFF8E1, 2.2);
+  sun.position.set(12, 18, 8);
+  sun.castShadow = true;
+  sun.shadow.camera.near = 0.5;
+  sun.shadow.camera.far = 80;
+  sun.shadow.camera.left = -22;
+  sun.shadow.camera.right = 22;
+  sun.shadow.camera.top = 22;
+  sun.shadow.camera.bottom = -22;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.bias = -0.001;
+  scene.add(sun);
+
+  // Point — warm table accent
+  const tableLight = new THREE.PointLight(0xFFE0B2, 1.2, 8);
+  tableLight.position.set(0, 3.5, 0);
+  tableLight.castShadow = true;
+  scene.add(tableLight);
+
+  // Rim light from back-left
+  const rim = new THREE.DirectionalLight(0xB2DFDB, 0.5);
+  rim.position.set(-10, 6, -6);
+  scene.add(rim);
+}
+
+/* ============================================================
+   HELPER — shadow-casting mesh
+   ============================================================ */
+function mesh(geo, mat, castShadow = true, receiveShadow = true) {
+  const m = new THREE.Mesh(geo, mat);
+  m.castShadow = castShadow;
+  m.receiveShadow = receiveShadow;
+  return m;
+}
+
+/* ============================================================
+   CREATE GROUND — large grass plane + decorative path
+   ============================================================ */
+function createGround() {
+  // Grass
+  const ground = mesh(new THREE.PlaneGeometry(60, 60), MAT.grass, false, true);
+  ground.rotation.x = -Math.PI / 2;
+  scene.add(ground);
+
+  // Circular stone path beneath table area
+  const pathDisc = mesh(new THREE.CylinderGeometry(4.5, 4.5, 0.04, 48), MAT.path);
+  pathDisc.position.set(0, 0.01, 0);
+  scene.add(pathDisc);
+
+  // Cross walkway
+  [-1, 1].forEach(sign => {
+    const strip = mesh(new THREE.PlaneGeometry(1.2, 16), MAT.path, false, true);
+    strip.rotation.x = -Math.PI / 2;
+    strip.rotation.z = sign * Math.PI / 4;
+    strip.position.set(sign * 0.6, 0.02, 0);
+    scene.add(strip);
+  });
+}
+
+/* ============================================================
+   CREATE TABLE — tabletop + 4 legs
+   ============================================================ */
+function createTable() {
+  const group = new THREE.Group();
+
+  // Tabletop
+  const top = mesh(new THREE.BoxGeometry(2.6, 0.12, 1.6), MAT.wood);
+  top.position.y = 1.0;
+  group.add(top);
+
+  // Apron strips
+  const apronFB = new THREE.BoxGeometry(2.4, 0.1, 0.06);
+  const apronLR = new THREE.BoxGeometry(0.06, 0.1, 1.36);
+  [[-1.2, 0], [1.2, 0]].forEach(([z, _]) => {
+    const a = mesh(new THREE.BoxGeometry(2.4, 0.1, 0.06), MAT.woodDark);
+    a.position.set(0, 0.88, z);
+    group.add(a);
+  });
+  [[-1.25, 0], [1.25, 0]].forEach(([x, _]) => {
+    const a = mesh(new THREE.BoxGeometry(0.06, 0.1, 1.36), MAT.woodDark);
+    a.position.set(x, 0.88, 0);
+    group.add(a);
+  });
+
+  // 4 legs
+  const legGeo = new THREE.CylinderGeometry(0.055, 0.07, 0.9, 8);
+  [[-1.1, -0.65], [-1.1, 0.65], [1.1, -0.65], [1.1, 0.65]].forEach(([x, z]) => {
+    const leg = mesh(legGeo, MAT.woodDark);
+    leg.position.set(x, 0.45, z);
+    group.add(leg);
+  });
+
+  scene.add(group);
+  return group;
+}
+
+/* ============================================================
+   CREATE CHAIR — seat, backrest, 4 legs
+   ============================================================ */
+function createChair(x, z, rotY = 0) {
+  const group = new THREE.Group();
+
+  // Seat
+  const seat = mesh(new THREE.BoxGeometry(0.7, 0.08, 0.7), MAT.wood);
+  seat.position.y = 0.52;
+  group.add(seat);
+
+  // Backrest (2 vertical slats + 1 top rail)
+  const backRail = mesh(new THREE.BoxGeometry(0.7, 0.07, 0.06), MAT.woodDark);
+  backRail.position.set(0, 0.92, -0.32);
+  group.add(backRail);
+
+  const midRail = mesh(new THREE.BoxGeometry(0.7, 0.05, 0.05), MAT.woodDark);
+  midRail.position.set(0, 0.72, -0.32);
+  group.add(midRail);
+
+  [-0.26, 0, 0.26].forEach(sx => {
+    const slat = mesh(new THREE.BoxGeometry(0.06, 0.44, 0.05), MAT.wood);
+    slat.position.set(sx, 0.72, -0.32);
+    group.add(slat);
+  });
+
+  // 4 legs
+  const legGeo = new THREE.CylinderGeometry(0.04, 0.05, 0.54, 8);
+  [[-0.28, -0.28], [-0.28, 0.28], [0.28, -0.28], [0.28, 0.28]].forEach(([lx, lz]) => {
+    const leg = mesh(legGeo, MAT.woodDark);
+    leg.position.set(lx, 0.25, lz);
+    group.add(leg);
+  });
+
+  group.position.set(x, 0, z);
+  group.rotation.y = rotY;
+  scene.add(group);
+  return group;
+}
+
+/* ============================================================
+   CREATE TIN — cylinder body + label band + lid
+   ============================================================ */
+function createTin(x, z, isMilo) {
+  const group = new THREE.Group();
+  const bodyMat = isMilo ? MAT.miloGreen : MAT.milkWhite;
+  const labelMat = isMilo ? MAT.miloLabel : MAT.milkLabel;
+
+  // Body
+  const body = mesh(new THREE.CylinderGeometry(0.115, 0.115, 0.34, 24), bodyMat);
+  body.position.y = 0.17;
+  group.add(body);
+
+  // Label band
+  const label = mesh(new THREE.CylinderGeometry(0.118, 0.118, 0.18, 24), labelMat);
+  label.position.y = 0.17;
+  group.add(label);
+
+  // Lid
+  const lid = mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.03, 24), MAT.lidMetal);
+  lid.position.y = 0.355;
+  group.add(lid);
+
+  // Rim ring
+  const rim = mesh(new THREE.TorusGeometry(0.12, 0.012, 8, 24), MAT.lidMetal);
+  rim.rotation.x = Math.PI / 2;
+  rim.position.y = 0.34;
+  group.add(rim);
+
+  group.position.set(x, 1.06, z); // on table
+  scene.add(group);
+  return group;
+}
+
+/* ============================================================
+   CREATE CUP — tapered body + handle torus
+   ============================================================ */
+function createCup(x, z, mat) {
+  const group = new THREE.Group();
+
+  // Body (tapered)
+  const body = mesh(new THREE.CylinderGeometry(0.085, 0.065, 0.18, 20), mat);
+  body.position.y = 0.09;
+  group.add(body);
+
+  // Handle
+  const handle = mesh(new THREE.TorusGeometry(0.055, 0.015, 8, 18, Math.PI), mat);
+  handle.rotation.z = Math.PI / 2;
+  handle.position.set(0.1, 0.085, 0);
+  group.add(handle);
+
+  // Saucer
+  const saucer = mesh(new THREE.CylinderGeometry(0.13, 0.11, 0.02, 20), MAT.cupCream);
+  saucer.position.y = -0.01;
+  group.add(saucer);
+
+  group.position.set(x, 1.06, z);
+  scene.add(group);
+  return group;
+}
+
+/* ============================================================
+   CREATE TREE — bark trunk + layered sphere canopy
+   ============================================================ */
+function createTree(x, z, scale = 1) {
+  const group = new THREE.Group();
+
+  const trunkH = 1.6 * scale;
+  const trunk = mesh(new THREE.CylinderGeometry(0.12 * scale, 0.18 * scale, trunkH, 10), MAT.trunkBark);
+  trunk.position.y = trunkH / 2;
+  group.add(trunk);
+
+  // 3-sphere canopy
+  const radii = [0.7, 0.6, 0.5].map(r => r * scale);
+  const offsets = [[0, trunkH + 0.5 * scale, 0], [-0.3 * scale, trunkH + 0.3 * scale, 0.2 * scale], [0.3 * scale, trunkH + 0.25 * scale, -0.2 * scale]];
+  offsets.forEach(([ox, oy, oz], i) => {
+    const leafMat = MAT.leaves.clone();
+    leafMat.color.setHSL(0.33, 0.55, 0.28 + i * 0.04);
+    const ball = mesh(new THREE.SphereGeometry(radii[i], 12, 10), leafMat);
+    ball.position.set(ox, oy, oz);
+    group.add(ball);
+  });
+
+  group.position.set(x, 0, z);
+  scene.add(group);
+  return group;
+}
+
+/* ============================================================
+   CREATE FENCE — posts + rails
+   ============================================================ */
+function createFence(x0, z0, x1, z1) {
+  const group = new THREE.Group();
+  const dx = x1 - x0, dz = z1 - z0;
+  const len = Math.sqrt(dx * dx + dz * dz);
+  const posts = Math.round(len / 1.2);
+  const angle = Math.atan2(dz, dx);
+
+  for (let i = 0; i <= posts; i++) {
+    const t = i / posts;
+    const px = x0 + dx * t, pz = z0 + dz * t;
+    const post = mesh(new THREE.BoxGeometry(0.08, 0.9, 0.08), MAT.fence);
+    post.position.set(px, 0.45, pz);
+    group.add(post);
+  }
+
+  // Two horizontal rails
+  [0.25, 0.6].forEach(h => {
+    const rail = mesh(new THREE.BoxGeometry(len, 0.06, 0.06), MAT.fence);
+    rail.position.set((x0 + x1) / 2, h, (z0 + z1) / 2);
+    rail.rotation.y = angle;
+    group.add(rail);
+  });
+
+  scene.add(group);
+}
+
+/* ============================================================
+   CREATE STONE — flattened sphere decoration
+   ============================================================ */
+function createStone(x, z, r = 0.18) {
+  const s = mesh(new THREE.SphereGeometry(r, 8, 6), MAT.stone);
+  s.scale.y = 0.55;
+  s.position.set(x, r * 0.28, z);
+  scene.add(s);
+}
+
+/* ============================================================
+   CREATE ENVIRONMENT — trees, fence, stones, flower beds
+   ============================================================ */
+function createEnvironment() {
+  // Trees around perimeter
+  const treePositions = [
+    [-7, -7], [7, -7], [-7, 7], [7, 7],
+    [0, -9], [0, 9], [-9, 0], [9, 0],
+    [-5, -11], [5, -11], [-5, 11], [5, 11],
+    [-11, -5], [-11, 5], [11, -5], [11, 5],
+  ];
+  treePositions.forEach(([x, z]) => {
+    const scale = 0.8 + Math.random() * 0.5;
+    createTree(x, z, scale);
+  });
+
+  // Fence segments forming a garden boundary
+  const R = 13;
+  const segments = 8;
+  for (let i = 0; i < segments; i++) {
+    const a0 = (i / segments) * Math.PI * 2;
+    const a1 = ((i + 1) / segments) * Math.PI * 2;
+    createFence(
+      Math.cos(a0) * R, Math.sin(a0) * R,
+      Math.cos(a1) * R, Math.sin(a1) * R
+    );
+  }
+
+  // Garden stones
+  const stoneRing = [
+    [4, 0], [-4, 0], [0, 4], [0, -4],
+    [3, 3], [-3, 3], [3, -3], [-3, -3],
+  ];
+  stoneRing.forEach(([x, z]) => createStone(x + 0.5, z + 0.5, 0.12 + Math.random() * 0.12));
+
+  // Flower-bed clusters (coloured spheres = flowers)
+  const flowerColors = [0xE91E63, 0xFF9800, 0xFFEB3B, 0x9C27B0, 0xF44336];
+  const bedCentres = [[-5.5, -1.5], [5.5, -1.5], [-5.5, 1.5], [5.5, 1.5]];
+  bedCentres.forEach(([bx, bz]) => {
+    for (let i = 0; i < 8; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 0.3 + Math.random() * 0.6;
+      const fx = bx + Math.cos(angle) * dist;
+      const fz = bz + Math.sin(angle) * dist;
+      const flowerMat = new THREE.MeshStandardMaterial({
+        color: flowerColors[Math.floor(Math.random() * flowerColors.length)],
+        roughness: 0.7, metalness: 0.0
+      });
+      const flower = mesh(new THREE.SphereGeometry(0.1, 6, 5), flowerMat);
+      flower.position.set(fx, 0.22, fz);
+      scene.add(flower);
+
+      const stemMat = new THREE.MeshStandardMaterial({ color: 0x4CAF50, roughness: 1 });
+      const stem = mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.22, 5), stemMat);
+      stem.position.set(fx, 0.11, fz);
+      scene.add(stem);
+    }
+  });
+
+  // Decorative curved panel / trellis
+  [-6.5, 6.5].forEach(px => {
+    const panel = mesh(new THREE.BoxGeometry(0.06, 2.2, 2.0), MAT.fence);
+    panel.position.set(px, 1.1, 0);
+    panel.castShadow = true;
+    scene.add(panel);
+    // Cross-bars
+    [-0.7, 0, 0.7].forEach(py => {
+      const bar = mesh(new THREE.BoxGeometry(0.05, 0.06, 2.0), MAT.fence);
+      bar.position.set(px + 0.03, 1.1 + py, 0);
+      scene.add(bar);
+    });
+  });
+}
+
+/* ============================================================
+   MAIN BUILD
+   ============================================================ */
+function buildScene() {
+  createGround();
+  setupLighting();
+
+  // Furniture
+  createTable();
+  createChair(-1.8, 0, Math.PI / 2);      // left
+  createChair( 1.8, 0, -Math.PI / 2);     // right
+  createChair( 0, -1.55, 0);              // front
+  createChair( 0,  1.55, Math.PI);        // back
+
+  // Objects on table
+  createTin(-0.55, -0.25, true);          // Milo tin
+  createTin( 0.55, -0.25, false);         // Milk tin
+  createCup(-0.3,  0.3, MAT.cupCream);    // Cup 1
+  createCup( 0.3,  0.3, MAT.cupBlue);    // Cup 2
+
+  createEnvironment();
+}
+
+/* ============================================================
+   RESIZE HANDLER
+   ============================================================ */
+function onResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+/* ============================================================
+   ANIMATION LOOP
+   ============================================================ */
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+/* ============================================================
+   ENTRY POINT
+   ============================================================ */
+initScene();
+setupControls();
+buildScene();
+animate();
+
+</script>
+</body>
+</html>
